@@ -23,7 +23,8 @@ import {
   FileVideo, 
   FileAudio, 
   FileArchive, 
-  MoreHorizontal 
+  MoreHorizontal,
+  Star
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { 
@@ -62,8 +63,7 @@ export default function FileTable({
   onSelectAll,
   allSelected,
 }: FileTableProps) {
-  // Get the files hooks functionality
-  const { downloadFile } = useFiles();
+  const { downloadFile, starFile, unstarFile } = useFiles();
   
   // Parse the sort order
   const [sortDirection, sortField] = sortBy.split('_');
@@ -101,6 +101,19 @@ export default function FileTable({
     }
   };
   
+  const handleStarToggle = async (e: React.MouseEvent, file: any) => {
+    e.stopPropagation();
+    try {
+      if (file.isStarred) {
+        await unstarFile(file.id);
+      } else {
+        await starFile(file.id);
+      }
+    } catch (error) {
+      console.error('Error toggling star:', error);
+    }
+  };
+
   return (
     <div className="w-full overflow-auto">
       <Table>
@@ -122,7 +135,7 @@ export default function FileTable({
             <TableHead className="cursor-pointer w-[120px]" onClick={() => handleSort('size')}>
               Size {getSortIndicator('size')}
             </TableHead>
-            <TableHead className="w-[80px] text-right">Actions</TableHead>
+            <TableHead className="w-[120px] text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -157,6 +170,16 @@ export default function FileTable({
               </TableCell>
               <TableCell className="p-2 text-right" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-end space-x-1">
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-8 w-8" 
+                    title={file.isStarred ? "Unstar" : "Star"}
+                    onClick={(e) => handleStarToggle(e, file)}
+                  >
+                    <Star className={`h-4 w-4 ${file.isStarred ? 'fill-yellow-400 text-yellow-400' : 'text-gray-400'}`} />
+                  </Button>
+                  
                   <Button 
                     variant="ghost" 
                     size="icon" 

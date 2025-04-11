@@ -1,313 +1,568 @@
-import type { Express, Request, Response } from "express";
-import { createServer, type Server } from "http";
-import { storage } from "./storage";
-import { 
-  insertUserSchema, 
-  insertFileSchema, 
-  insertShareLinkSchema 
-} from "@shared/schema";
-import crypto from "crypto";
-import { z } from "zod";
-import 'express-session';
+import express, { Request, Response } from 'express';
+import { storage } from './storage';
+import { insertUserSchema } from '@shared/schema';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import { z } from 'zod';
 
-// Extend Express session to include userId property
-declare module 'express-session' {
-  interface SessionData {
-    userId?: number;
-  }
+// JWT secret key from environment variable or fallback for development
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+
+// Extend Express Request type to include session
+interface AuthenticatedRequest extends Request {
+  session?: {
+    userId: number;
+  };
 }
 
-export async function registerRoutes(app: Express): Promise<Server> {
-  // User Registration
+// Middleware to verify JWT token
+const authenticateToken = (req: AuthenticatedRequest, res: Response, next: Function) => {
+  const authHeader = req.headers['authorization'];
+  console.log('Auth header:', authHeader); // Debug log
+
+  const token = authHeader && authHeader.split(' ')[1];
+  console.log('Token:', token); // Debug log
+
+  if (!token) {
+    console.log('No token provided'); // Debug log
+    return res.status(401).json({ error: 'Access token required' });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
+    if (err) {
+      console.error('Token verification error:', err); // Debug log
+      return res.status(403).json({ error: 'Invalid or expired token' });
+    }
+    console.log('Token verified successfully:', user); // Debug log
+    req.session = { userId: user.id };
+    next();
+  });
+};
+
+// Function to register all routes
+export function registerRoutes(app: express.Application) {
+  // Registration endpoint
   app.post("/api/auth/register", async (req: Request, res: Response) => {
     try {
       const userData = insertUserSchema.parse(req.body);
 
-      const existingUser = await storage.getUserByUsername(userData.username);
-      if (existingUser) {
-        return res.status(400).json({ message: "Username already exists" });
+      // Check if email already exists
+      const existingEmail = await storage.getUserByEmail(userData.email);
+      if (existingEmail) {
+        return res.status(400).json({ error: "Email already registered" });
       }
 
-      if (userData.email) {
-        const existingEmail = await storage.getUserByEmail(userData.email);
-        if (existingEmail) {
-          return res.status(400).json({ message: "Email already exists" });
+      // Check if username already exists (if provided)
+      if (userData.username) {
+        const existingUsername = await storage.getUserByUsername(userData.username);
+        if (existingUsername) {
+          return res.status(400).json({ error: "Username already taken" });
         }
       }
 
-      const user = await storage.createUser(userData);
-      const { password, ...userWithoutPassword } = user;
-      
-      if (req.session) {
-        req.session.userId = user.id;
-      }
-      
-      return res.status(201).json(userWithoutPassword);
-    } catch (error) {
-      console.error("Registration error:", error);
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid data", errors: error.errors });
-      }
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-  
-  // Google user sync
-  app.post("/api/auth/google-sync", async (req: Request, res: Response) => {
-    try {
-      const { user } = req.body;
-      
-      if (!user || !user.id || !user.email) {
-        return res.status(400).json({ message: "Invalid Google user data" });
-      }
-      
-      // Check if user already exists
-      let existingUser = await storage.getUserByEmail(user.email);
-      
-      if (!existingUser) {
-        // Create new user from Google data
-        existingUser = await storage.createUser({
-          username: user.email.split('@')[0],
-          password: crypto.randomBytes(32).toString('hex'), // Random secure password
-          name: user.name || '',
+      // Hash password
+      const hashedPassword = await bcrypt.hash(userData.password, 10);
+
+      // Create user with isVerified set to true
+      const user = await storage.createUser({
+        ...userData,
+        password: hashedPassword,
+        isVerified: true
+      });
+
+      // Generate JWT token
+      const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '24h' });
+
+      res.status(201).json({
+        message: "Registration successful",
+        token,
+        user: {
+          id: user.id,
           email: user.email,
-        });
-        console.log("Created new user from Google login:", existingUser.id);
-      }
-      
-      // Log the user in
-      if (req.session) {
-        req.session.userId = existingUser.id;
-      }
-      
-      const { password, ...userWithoutPassword } = existingUser;
-      return res.status(200).json(userWithoutPassword);
+          username: user.username,
+          name: user.name
+        }
+      });
     } catch (error) {
-      console.error("Google sync error:", error);
-      return res.status(500).json({ message: "Internal server error" });
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error("Registration error:", error);
+        res.status(500).json({ error: "Registration failed" });
+      }
     }
   });
 
-  // User Login
+  // Login endpoint
   app.post("/api/auth/login", async (req: Request, res: Response) => {
     try {
-      const { username, password } = req.body;
+      const { email, password } = req.body;
 
-      if (!username || !password) {
-        return res.status(400).json({ message: "Username and password are required" });
+      if (!email) {
+        return res.status(400).json({ error: "Email is required" });
       }
 
-      const user = await storage.getUserByUsername(username);
-      if (!user || user.password !== password) {
-        return res.status(401).json({ message: "Invalid username or password" });
+      // Find user by email
+      const user = await storage.getUserByEmail(email);
+      if (!user) {
+        return res.status(401).json({ error: "Invalid email or password" });
       }
 
-      const { password: _, ...userWithoutPassword } = user;
-      
-      if (req.session) {
-        req.session.userId = user.id;
+      // For regular users, verify password
+      if (!user.isGoogleUser) {
+        const validPassword = await bcrypt.compare(password, user.password);
+        if (!validPassword) {
+          return res.status(401).json({ error: "Invalid email or password" });
+        }
       }
-      
-      return res.status(200).json(userWithoutPassword);
+
+      // Generate JWT token
+      const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '24h' });
+
+      res.json({
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          name: user.name
+        }
+      });
     } catch (error) {
       console.error("Login error:", error);
-      return res.status(500).json({ message: "Internal server error" });
+      res.status(500).json({ error: "Login failed" });
     }
   });
 
-  // User Logout
-  app.post("/api/auth/logout", (req: Request, res: Response) => {
-    if (req.session) {
-      req.session.destroy(err => {
-        if (err) {
-          return res.status(500).json({ message: "Error logging out" });
-        }
-        res.status(200).json({ message: "Logged out successfully" });
-      });
-    } else {
-      res.status(200).json({ message: "Logged out successfully" });
-    }
-  });
-
-  // Get Current User
-  app.get("/api/auth/me", async (req: Request, res: Response) => {
+  // Logout endpoint
+  app.post("/api/auth/logout", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      if (!req.session || !req.session.userId) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
+      // In a real application, you might want to invalidate the token on the server
+      // For now, we'll just return a success message
+      res.json({ message: "Logged out successfully" });
+    } catch (error) {
+      console.error("Logout error:", error);
+      res.status(500).json({ error: "Logout failed" });
+    }
+  });
 
-      const user = await storage.getUser(req.session.userId);
+  // Protected route example
+  app.get("/api/user/profile", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const user = await storage.getUser(req.session!.userId);
       if (!user) {
-        return res.status(404).json({ message: "User not found" });
+        return res.status(404).json({ error: "User not found" });
       }
 
-      const { password, ...userWithoutPassword } = user;
-      return res.status(200).json(userWithoutPassword);
-    } catch (error) {
-      console.error("Get current user error:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  // Get User Files
-  app.get("/api/files", async (req: Request, res: Response) => {
-    try {
-      if (!req.session || !req.session.userId) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-
-      const files = await storage.getFilesByUserId(req.session.userId);
-      return res.status(200).json(files);
-    } catch (error) {
-      console.error("Get user files error:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  // Upload File
-  app.post("/api/files", async (req: Request, res: Response) => {
-    try {
-      if (!req.session || !req.session.userId) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-
-      const fileData = insertFileSchema.parse({
-        ...req.body,
-        userId: req.session.userId
+      res.json({
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        name: user.name,
+        photoURL: user.photoURL
       });
-
-      const file = await storage.createFile(fileData);
-      return res.status(201).json(file);
     } catch (error) {
-      console.error("Upload file error:", error);
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid data", errors: error.errors });
-      }
-      return res.status(500).json({ message: "Internal server error" });
+      console.error("Profile error:", error);
+      res.status(500).json({ error: "Failed to fetch profile" });
     }
   });
 
-  // Update File
-  app.patch("/api/files/:id", async (req: Request, res: Response) => {
+  // Update profile endpoint
+  app.patch("/api/user/profile", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      if (!req.session || !req.session.userId) {
-        return res.status(401).json({ message: "Not authenticated" });
+      const userId = req.session!.userId;
+      const updateFields = req.body as {
+        name?: string;
+        username?: string;
+        photoURL?: string;
+      };
+
+      // Get current user
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(404).json({ error: "User not found" });
       }
 
+      // Validate the update data
+      const updateData = {
+        name: updateFields.name || currentUser.name || null,
+        username: updateFields.username || currentUser.username || null,
+        photoURL: updateFields.photoURL || currentUser.photoURL || null
+      };
+
+      // If username is being changed, check if it's already taken
+      if (updateFields.username && updateFields.username !== currentUser.username) {
+        const existingUser = await storage.getUserByUsername(updateFields.username);
+        if (existingUser && existingUser.id !== userId) {
+          return res.status(400).json({ error: "Username already taken" });
+        }
+      }
+
+      // Update user
+      const updatedUser = await storage.updateUser(userId, updateData);
+
+      // Return only necessary user data
+      res.json({
+        id: updatedUser.id,
+        email: updatedUser.email,
+        username: updatedUser.username,
+        name: updatedUser.name,
+        photoURL: updatedUser.photoURL
+      });
+    } catch (error) {
+      console.error("Profile update error:", error);
+      res.status(500).json({ error: "Failed to update profile" });
+    }
+  });
+
+  // Get files endpoint (including deleted files if requested)
+  app.get("/api/files", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.session!.userId;
+      const includeDeleted = req.query.includeDeleted === 'true';
+
+      const files = await storage.getFilesByUserId(userId, includeDeleted);
+      res.json(files);
+    } catch (error) {
+      console.error("Error fetching files:", error);
+      res.status(500).json({ error: "Failed to fetch files" });
+    }
+  });
+
+  // Get deleted files endpoint
+  app.get("/api/files/trash", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.session!.userId;
+      const deletedFiles = await storage.getDeletedFiles(userId);
+      res.json(deletedFiles);
+    } catch (error) {
+      console.error("Error fetching deleted files:", error);
+      res.status(500).json({ error: "Failed to fetch deleted files" });
+    }
+  });
+
+  app.post("/api/files", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.session!.userId;
+      const fileData = {
+        ...req.body,
+        userId,
+      };
+      const file = await storage.createFile(fileData);
+      res.status(201).json(file);
+    } catch (error) {
+      console.error("Error creating file:", error);
+      res.status(500).json({ error: "Failed to create file" });
+    }
+  });
+
+  app.patch("/api/files/:id", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+    try {
       const fileId = parseInt(req.params.id);
-      const file = await storage.getFile(fileId);
-
-      if (!file) {
-        return res.status(404).json({ message: "File not found" });
+      const userId = req.session!.userId;
+      
+      // Check if file exists and belongs to user
+      const existingFile = await storage.getFile(fileId);
+      if (!existingFile) {
+        return res.status(404).json({ error: "File not found" });
       }
-
-      if (file.userId !== req.session.userId) {
-        return res.status(403).json({ message: "Not authorized" });
+      if (existingFile.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
       }
 
       const updatedFile = await storage.updateFile(fileId, req.body);
-      return res.status(200).json(updatedFile);
+      res.json(updatedFile);
     } catch (error) {
-      console.error("Update file error:", error);
-      return res.status(500).json({ message: "Internal server error" });
+      console.error("Error updating file:", error);
+      res.status(500).json({ error: "Failed to update file" });
     }
   });
 
-  // Delete File (Move to Trash)
-  app.delete("/api/files/:id", async (req: Request, res: Response) => {
+  // Delete file endpoint (moves to trash)
+  app.delete("/api/files/:id", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      if (!req.session || !req.session.userId) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-
       const fileId = parseInt(req.params.id);
-      const file = await storage.getFile(fileId);
-
-      if (!file) {
-        return res.status(404).json({ message: "File not found" });
+      const success = await storage.deleteFile(fileId);
+      
+      if (!success) {
+        return res.status(404).json({ error: "File not found" });
       }
-
-      if (file.userId !== req.session.userId) {
-        return res.status(403).json({ message: "Not authorized" });
-      }
-
-      await storage.updateFile(fileId, { isDeleted: true });
-      return res.status(200).json({ message: "File moved to trash" });
+      
+      res.json({ message: "File moved to trash" });
     } catch (error) {
-      console.error("Delete file error:", error);
-      return res.status(500).json({ message: "Internal server error" });
+      console.error("Error deleting file:", error);
+      res.status(500).json({ error: "Failed to delete file" });
     }
   });
 
-  // Create Share Link
-  app.post("/api/files/:id/share", async (req: Request, res: Response) => {
+  // Permanently delete file endpoint
+  app.delete("/api/files/:id/permanent", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      if (!req.session || !req.session.userId) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-
       const fileId = parseInt(req.params.id);
-      const file = await storage.getFile(fileId);
-
-      if (!file) {
-        return res.status(404).json({ message: "File not found" });
+      const success = await storage.permanentlyDeleteFile(fileId);
+      
+      if (!success) {
+        return res.status(404).json({ error: "File not found" });
       }
+      
+      res.json({ message: "File permanently deleted" });
+    } catch (error) {
+      console.error("Error permanently deleting file:", error);
+      res.status(500).json({ error: "Failed to permanently delete file" });
+    }
+  });
 
-      if (file.userId !== req.session.userId) {
-        return res.status(403).json({ message: "Not authorized" });
+  // Restore file from trash
+  app.post("/api/files/:id/restore", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const fileId = parseInt(req.params.id);
+      const success = await storage.updateFile(fileId, { isDeleted: false });
+      
+      if (!success) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      
+      res.json({ message: "File restored from trash" });
+    } catch (error) {
+      console.error("Error restoring file:", error);
+      res.status(500).json({ error: "Failed to restore file" });
+    }
+  });
+
+  app.post("/api/files/:id/share", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const fileId = parseInt(req.params.id);
+      const userId = req.session!.userId;
+      
+      // Check if file exists and belongs to user
+      const existingFile = await storage.getFile(fileId);
+      if (!existingFile) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      if (existingFile.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
       }
 
       const { expiryDays } = req.body;
-      let expiryDate: Date | null = null;
-
-      if (expiryDays > 0) {
-        expiryDate = new Date();
+      const expiryDate = new Date();
         expiryDate.setDate(expiryDate.getDate() + expiryDays);
-      }
-
-      const token = crypto.randomBytes(16).toString('hex');
       
       const shareLink = await storage.createShareLink({
-        token,
         fileId,
-        userId: req.session.userId,
-        expiryDate: expiryDate || undefined
+        userId,
+        token: Math.random().toString(36).substring(7),
+        expiryDate,
       });
 
-      return res.status(201).json(shareLink);
+      res.json({ link: `${process.env.APP_URL || 'http://localhost:8080'}/shared/${shareLink.token}` });
     } catch (error) {
-      console.error("Create share link error:", error);
-      return res.status(500).json({ message: "Internal server error" });
+      console.error("Error sharing file:", error);
+      res.status(500).json({ error: "Failed to share file" });
     }
   });
 
-  // Get Shared File by Token
-  app.get("/api/share/:token", async (req: Request, res: Response) => {
+  // Star file endpoint
+  app.post("/api/files/:id/star", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { token } = req.params;
-      const shareLink = await storage.getShareLink(token);
-
-      if (!shareLink) {
-        return res.status(404).json({ message: "Invalid or expired share link" });
+      const fileId = parseInt(req.params.id);
+      const userId = req.session!.userId;
+      
+      // Check if file exists and belongs to user
+      const existingFile = await storage.getFile(fileId);
+      if (!existingFile) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      if (existingFile.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
       }
 
-      // Check if the link is expired
-      if (shareLink.expiryDate && new Date(shareLink.expiryDate) < new Date()) {
-        return res.status(410).json({ message: "Share link has expired" });
-      }
-
-      const file = await storage.getFile(shareLink.fileId);
-      if (!file) {
-        return res.status(404).json({ message: "File not found" });
-      }
-
-      return res.status(200).json(file);
+      // Update file to mark as starred
+      const updatedFile = await storage.updateFile(fileId, { isStarred: true });
+      res.json(updatedFile);
     } catch (error) {
-      console.error("Get shared file error:", error);
-      return res.status(500).json({ message: "Internal server error" });
+      console.error("Error starring file:", error);
+      res.status(500).json({ error: "Failed to star file" });
     }
   });
 
-  const httpServer = createServer(app);
-  return httpServer;
+  // Unstar file endpoint
+  app.post("/api/files/:id/unstar", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const fileId = parseInt(req.params.id);
+      const userId = req.session!.userId;
+      
+      // Check if file exists and belongs to user
+      const existingFile = await storage.getFile(fileId);
+      if (!existingFile) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      if (existingFile.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Update file to mark as unstarred
+      const updatedFile = await storage.updateFile(fileId, { isStarred: false });
+      res.json(updatedFile);
+    } catch (error) {
+      console.error("Error unstarring file:", error);
+      res.status(500).json({ error: "Failed to unstar file" });
+    }
+  });
+
+  // Folder endpoints
+  app.post("/api/folders", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.session!.userId;
+      const { name, path } = req.body;
+
+      if (!name || typeof name !== 'string') {
+        return res.status(400).json({ error: "Valid folder name is required" });
+      }
+
+      // Sanitize folder name
+      const sanitizedName = name.trim().replace(/[/\\?%*:|"<>]/g, '-');
+      
+      // Create a virtual folder entry
+      const folder = await storage.createFile({
+        name: sanitizedName,
+        type: 'folder',
+        size: 0,
+        content: '',
+        userId,
+        folder: path || '',
+        lastAccessed: new Date(),
+      });
+
+      // Mark it as a folder
+      const folderWithMeta = await storage.updateFile(folder.id, {
+        ...folder,
+        isFolder: true
+      });
+
+      res.status(201).json(folderWithMeta);
+    } catch (error) {
+      console.error("Error creating folder:", error);
+      res.status(500).json({ error: "Failed to create folder" });
+    }
+  });
+
+  // Get folder contents
+  app.get("/api/folders/:path(*)", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.session!.userId;
+      const folderPath = req.params.path || '';
+      
+      const files = await storage.getFilesByUserId(userId);
+      const folderContents = files.filter(file => {
+        if (!folderPath) {
+          return !file.folder || file.folder === '';
+        }
+        return file.folder === folderPath;
+      });
+
+      res.json(folderContents);
+    } catch (error) {
+      console.error("Error fetching folder contents:", error);
+      res.status(500).json({ error: "Failed to fetch folder contents" });
+    }
+  });
+
+  // Delete folder
+  app.delete("/api/folders/:path(*)", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.session!.userId;
+      const folderPath = req.params.path;
+
+      const files = await storage.getFilesByUserId(userId);
+      const folderFiles = files.filter(file => 
+        file.folder === folderPath || file.folder?.startsWith(folderPath + '/')
+      );
+
+      // Move all files in the folder to trash
+      for (const file of folderFiles) {
+        await storage.updateFile(file.id, { isDeleted: true });
+      }
+
+      res.json({ success: true, message: "Folder moved to trash" });
+    } catch (error) {
+      console.error("Error deleting folder:", error);
+      res.status(500).json({ error: "Failed to delete folder" });
+    }
+  });
+
+  // Get recently accessed files endpoint
+  app.get("/api/files/recent", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.session!.userId;
+      const files = await storage.getFilesByUserId(userId, false);
+      
+      // Sort by lastAccessed date and get the 5 most recent
+      const recentFiles = files
+        .filter(file => file.lastAccessed)
+        .sort((a, b) => {
+          const dateA = new Date(a.lastAccessed!).getTime();
+          const dateB = new Date(b.lastAccessed!).getTime();
+          return dateB - dateA;
+        })
+        .slice(0, 5);
+      
+      res.json(recentFiles);
+    } catch (error) {
+      console.error("Error fetching recent files:", error);
+      res.status(500).json({ error: "Failed to fetch recent files" });
+    }
+  });
+
+  // Update file access time when viewing/downloading
+  app.post("/api/files/:id/access", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const fileId = parseInt(req.params.id);
+      const userId = req.session!.userId;
+      
+      // Check if file exists and belongs to user
+      const existingFile = await storage.getFile(fileId);
+      if (!existingFile) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      if (existingFile.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Update lastAccessed timestamp
+      const updatedFile = await storage.updateFile(fileId, { 
+        lastAccessed: new Date() 
+      });
+      
+      res.json(updatedFile);
+    } catch (error) {
+      console.error("Error updating file access:", error);
+      res.status(500).json({ error: "Failed to update file access" });
+    }
+  });
+
+  // Modify the existing file download/view endpoints to update lastAccessed
+  app.get("/api/files/:id", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const fileId = parseInt(req.params.id);
+      const userId = req.session!.userId;
+
+      const file = await storage.getFile(fileId);
+      if (!file) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      if (file.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Update lastAccessed timestamp
+      await storage.updateFile(fileId, { lastAccessed: new Date() });
+      
+      res.json(file);
+    } catch (error) {
+      console.error("Error fetching file:", error);
+      res.status(500).json({ error: "Failed to fetch file" });
+    }
+  });
+
+  // Add other routes here...
 }

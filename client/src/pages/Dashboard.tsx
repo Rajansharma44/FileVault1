@@ -9,18 +9,21 @@ import UploadFileModal from "@/components/modals/UploadFileModal";
 import FilePreviewModal from "@/components/modals/FilePreviewModal";
 import ShareFileModal from "@/components/modals/ShareFileModal";
 import RenameFileModal from "@/components/modals/RenameFileModal";
+import NotificationDropdown from "@/components/NotificationDropdown";
 import { useFiles } from "@/hooks/useFiles";
 import { useAuth } from "@/hooks/useAuthHook";
 import { useToast } from "@/hooks/use-toast";
+import { useNotifications } from "@/contexts/NotificationContext";
 import useDarkMode from "@/hooks/useDarkMode";
 import { Button } from "@/components/ui/button";
-import { Grid, LayoutGrid, List } from "lucide-react";
+import { Grid, LayoutGrid, List, Upload, FolderPlus } from "lucide-react";
 
 export default function Dashboard() {
   const [location] = useLocation();
   const { user, logout } = useAuth();
   const { toggleDarkMode, isDarkMode } = useDarkMode();
   const { toast } = useToast();
+  const { addNotification } = useNotifications();
   
   // UI state
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
@@ -40,12 +43,31 @@ export default function Dashboard() {
   
   const {
     files,
+    activeFiles,
     isLoading,
     uploadFile,
     renameFile,
     deleteFile,
     createShareLink,
+    recentFiles,
+    fetchRecentFiles,
   } = useFiles();
+
+  // Fetch recent files periodically
+  useEffect(() => {
+    // Initial fetch
+    fetchRecentFiles();
+
+    // Set up interval for periodic updates
+    const intervalId = setInterval(() => {
+      fetchRecentFiles();
+    }, 60000); // Refresh every minute
+
+    // Cleanup interval on unmount
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, []); // Empty dependency array since fetchRecentFiles is now memoized
 
   // Get current view from the URL path
   const getCurrentView = () => {
@@ -87,28 +109,21 @@ export default function Dashboard() {
   const filterFiles = () => {
     if (!files) return [];
 
-    let filtered = [...files];
+    let filtered = view === "trash" ? [...files] : [...activeFiles];
 
     // Apply view filter
     if (view === "recent") {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       filtered = filtered.filter(
-        (file) => new Date(file.dateAdded) > sevenDaysAgo && !file.isDeleted
+        (file) => new Date(file.dateAdded) > sevenDaysAgo
       );
     } else if (view === "shared") {
-      filtered = filtered.filter(
-        (file) => file.isShared && !file.isDeleted
-      );
+      filtered = filtered.filter(file => file.isShared);
     } else if (view === "trash") {
-      filtered = filtered.filter((file) => file.isDeleted);
+      filtered = filtered.filter(file => file.isDeleted);
     } else if (view === "folder") {
-      filtered = filtered.filter(
-        (file) => file.folder === folder && !file.isDeleted
-      );
-    } else {
-      // My Files view - show files not in trash
-      filtered = filtered.filter((file) => !file.isDeleted);
+      filtered = filtered.filter(file => file.folder === folder);
     }
 
     // Apply search filter
@@ -159,6 +174,13 @@ export default function Dashboard() {
         title: "Success",
         description: `${fileData.name} uploaded successfully`,
       });
+      addNotification({
+        type: 'upload',
+        title: 'File uploaded',
+        message: `${fileData.name} was uploaded successfully`,
+        fileId: fileData.id,
+        fileName: fileData.name
+      });
     } catch (error: any) {
       toast({
         title: "Error uploading file",
@@ -173,9 +195,16 @@ export default function Dashboard() {
     setPreviewModalOpen(true);
   };
 
-  const handleShareFile = (file: any) => {
+  const handleShareFile = async (file: any) => {
     setSelectedFile(file);
     setShareModalOpen(true);
+    addNotification({
+      type: 'share',
+      title: 'File shared',
+      message: `${file.name} was shared`,
+      fileId: file.id,
+      fileName: file.name
+    });
   };
 
   const handleRenameFile = (file: any) => {
@@ -183,13 +212,24 @@ export default function Dashboard() {
     setRenameModalOpen(true);
   };
 
-  const handleDeleteFile = (file: any) => {
-    deleteFile(file.id);
-    // Remove from selected files if it was selected
-    if (selectedFiles.has(file.id)) {
-      const newSelected = new Set(selectedFiles);
-      newSelected.delete(file.id);
-      setSelectedFiles(newSelected);
+  const handleDeleteFile = async (file: any) => {
+    try {
+      await deleteFile(file.id);
+      // Remove from selected files if it was selected
+      if (selectedFiles.has(file.id)) {
+        const newSelected = new Set(selectedFiles);
+        newSelected.delete(file.id);
+        setSelectedFiles(newSelected);
+      }
+      addNotification({
+        type: 'delete',
+        title: 'File deleted',
+        message: `${file.name} was moved to trash`,
+        fileId: file.id,
+        fileName: file.name
+      });
+    } catch (error) {
+      console.error('Error deleting file:', error);
     }
   };
   
@@ -241,7 +281,11 @@ export default function Dashboard() {
         user={user}
         isDarkMode={isDarkMode}
         onToggleDarkMode={toggleDarkMode}
-        onLogout={logout}
+        onUploadClick={() => setUploadModalOpen(true)}
+        onToggle={() => setSidebarOpen(!sidebarOpen)}
+        recentFiles={recentFiles}
+        onShare={handleShareFile}
+        onDelete={handleDeleteFile}
       />
 
       {/* Main Content */}
@@ -255,6 +299,7 @@ export default function Dashboard() {
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           onUploadClick={() => setUploadModalOpen(true)}
           user={user}
+          notificationDropdown={<NotificationDropdown />}
         />
 
         {/* Main Content Area */}

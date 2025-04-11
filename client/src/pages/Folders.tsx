@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Loader2, Folder, Plus, ChevronRight, FileText, Grid3X3, Search, Info, Share2, MoreVertical } from "lucide-react";
+import { Loader2, Folder, Plus, ChevronRight, FileText, Grid3X3, Search, Info, Share2, MoreVertical, Home, List, ArrowLeft, X } from "lucide-react";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,11 +14,12 @@ import { useAuth } from "@/hooks/useAuthHook";
 import { useFiles } from "@/hooks/useFiles";
 import { formatBytes, formatDate } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 export default function Folders() {
   const [location, setLocation] = useLocation();
   const { user } = useAuth();
-  const { files, isLoading, updateFile } = useFiles();
+  const { files, isLoading, updateFile, createFolder, deleteFile } = useFiles();
   const { toast } = useToast();
   
   // UI state
@@ -26,10 +27,15 @@ export default function Folders() {
   const [sortBy, setSortBy] = useState<string>("date-desc");
   const [newFolderName, setNewFolderName] = useState("");
   const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   
   // Folder navigation state
   const [currentPath, setCurrentPath] = useState<string[]>([]);
   const [folders, setFolders] = useState<string[]>([]);
+  
+  // Preview state
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   
   // Get all files that are not deleted
   const activeFiles = files?.filter(file => !file.isDeleted) || [];
@@ -52,7 +58,10 @@ export default function Folders() {
         }
       });
       
-      setFolders(Array.from(folderSet));
+      const newFolders = Array.from(folderSet);
+      if (JSON.stringify(newFolders) !== JSON.stringify(folders)) {
+        setFolders(newFolders);
+      }
     }
   }, [activeFiles]);
   
@@ -129,7 +138,7 @@ export default function Folders() {
   };
   
   // Create a new folder
-  const handleCreateFolder = () => {
+  const handleCreateFolder = async () => {
     if (!newFolderName.trim()) {
       toast({
         title: "Folder name required",
@@ -142,32 +151,25 @@ export default function Folders() {
     // Sanitize folder name (remove slashes and special characters)
     const sanitizedName = newFolderName.trim().replace(/[/\\?%*:|"<>]/g, '-');
     
-    // Check if folder already exists at this level
-    if (currentSubfolders.includes(sanitizedName)) {
+    try {
+      // Create the folder using the useFiles hook
+      await createFolder(sanitizedName, currentPath);
+      
+      // Reset dialog state
+      setNewFolderName("");
+      setNewFolderDialogOpen(false);
+      
       toast({
-        title: "Folder already exists",
-        description: "A folder with this name already exists in the current location",
+        title: "Folder created",
+        description: `${sanitizedName} folder has been created`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error creating folder",
+        description: error instanceof Error ? error.message : "Could not create folder",
         variant: "destructive",
       });
-      return;
     }
-    
-    // Create the new folder path
-    const newFolderPath = currentPath.length > 0 
-      ? `${currentPath.join('/')}/${sanitizedName}`
-      : sanitizedName;
-    
-    // Add to folders list
-    setFolders([...folders, newFolderPath]);
-    
-    // Reset dialog
-    setNewFolderName("");
-    setNewFolderDialogOpen(false);
-    
-    toast({
-      title: "Folder created",
-      description: `${sanitizedName} folder has been created`,
-    });
   };
   
   // Move a file to a folder
@@ -224,228 +226,358 @@ export default function Folders() {
       )
     : currentSubfolders;
   
+  // Function to handle file preview
+  const handleFilePreview = (file: File) => {
+    setPreviewFile(file);
+    setPreviewOpen(true);
+  };
+
+  // Function to get file preview content
+  const getPreviewContent = (file: File) => {
+    const isImage = file.type?.startsWith('image/');
+    const isText = file.type?.startsWith('text/') || file.type === 'application/json';
+    const isPDF = file.type === 'application/pdf';
+
+    if (isImage) {
+      return (
+        <div className="flex items-center justify-center w-full h-full">
+          <img 
+            src={file.content} 
+            alt={file.name}
+            className="max-w-full max-h-[70vh] object-contain"
+          />
+        </div>
+      );
+    }
+
+    if (isText) {
+      return (
+        <div className="w-full h-full max-h-[70vh] overflow-auto">
+          <pre className="p-4 text-sm whitespace-pre-wrap bg-muted rounded-lg">
+            {file.content}
+          </pre>
+        </div>
+      );
+    }
+
+    if (isPDF) {
+      return (
+        <div className="w-full h-[70vh]">
+          <iframe
+            src={file.content}
+            className="w-full h-full"
+            title={file.name}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex flex-col items-center justify-center text-center p-8">
+        <FileText className="h-16 w-16 text-muted-foreground mb-4" />
+        <h3 className="text-lg font-semibold mb-2">Preview not available</h3>
+        <p className="text-sm text-muted-foreground">
+          This file type cannot be previewed directly.
+        </p>
+      </div>
+    );
+  };
+
   return (
-    <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Header */}
-      <Header
-        title="Folders"
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        onSortChange={setSortBy}
-        onToggleSidebar={() => {}}
-        onUploadClick={() => setLocation("/")}
-      />
-      
-      {/* Main Content */}
-      <main className="flex-1 overflow-auto p-6">
-        {isLoading ? (
-          <div className="flex items-center justify-center h-full">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {/* Folder Navigation */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Breadcrumb className="overflow-hidden">
-                  <BreadcrumbList>
-                    <BreadcrumbItem>
-                      <BreadcrumbLink 
-                        onClick={() => setCurrentPath([])}
-                        className="flex items-center"
-                      >
-                        <Folder className="h-4 w-4 mr-1" />
-                        <span>Home</span>
-                      </BreadcrumbLink>
-                    </BreadcrumbItem>
-                    
-                    {currentPath.map((pathPart, index) => (
-                      <BreadcrumbItem key={index}>
-                        <BreadcrumbSeparator>
-                          <ChevronRight className="h-4 w-4" />
-                        </BreadcrumbSeparator>
-                        <BreadcrumbLink 
-                          onClick={() => navigateToPathLevel(index)}
-                        >
-                          {pathPart}
-                        </BreadcrumbLink>
-                      </BreadcrumbItem>
-                    ))}
-                  </BreadcrumbList>
-                </Breadcrumb>
-              </div>
-              
-              <Dialog open={newFolderDialogOpen} onOpenChange={setNewFolderDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="flex items-center gap-2">
-                    <Plus className="h-4 w-4" />
-                    <span>New Folder</span>
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Create new folder</DialogTitle>
-                    <DialogDescription>
-                      Add a new folder to organize your files
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="grid gap-4 py-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="folderName">Folder name</Label>
-                      <Input
-                        id="folderName"
-                        value={newFolderName}
-                        onChange={(e) => setNewFolderName(e.target.value)}
-                        placeholder="Enter folder name"
-                      />
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {currentPath.length > 0 ? (
-                        <p>Creating folder in: {currentPath.join('/')}</p>
-                      ) : (
-                        <p>Creating folder at root level</p>
-                      )}
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button
-                      variant="outline"
-                      onClick={() => setNewFolderDialogOpen(false)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button onClick={handleCreateFolder}>
-                      Create
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
-            
-            {/* Folders Section */}
-            {filteredSubfolders.length > 0 && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Folders</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {filteredSubfolders.map((folder) => (
-                    <Card 
-                      key={folder}
-                      className="cursor-pointer hover:border-primary transition-all"
-                      onClick={() => navigateToFolder(folder)}
-                    >
-                      <CardContent className="p-4 flex items-center gap-3">
-                        <div className="bg-blue-500/10 dark:bg-blue-500/20 p-2 rounded-md">
-                          <Folder className="h-8 w-8 text-blue-500" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-medium truncate">{folder}</h3>
-                        </div>
-                        <ChevronRight className="h-4 w-4 text-gray-400" />
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </div>
+    <div className="container mx-auto p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {currentPath.length > 0 && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigateUp()}
+              className="mr-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setLocation("/")}
+            className="mr-2"
+          >
+            <Home className="h-4 w-4" />
+          </Button>
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink onClick={() => setCurrentPath([])}>
+                  Files
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              {currentPath.map((folder, index) => (
+                <>
+                  <BreadcrumbSeparator />
+                  <BreadcrumbItem key={index}>
+                    <BreadcrumbLink onClick={() => navigateToPathLevel(index)}>
+                      {folder}
+                    </BreadcrumbLink>
+                  </BreadcrumbItem>
+                </>
+              ))}
+            </BreadcrumbList>
+          </Breadcrumb>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setViewMode(viewMode === "grid" ? "list" : "grid")}
+          >
+            {viewMode === "grid" ? (
+              <List className="h-4 w-4" />
+            ) : (
+              <Grid3X3 className="h-4 w-4" />
             )}
-            
-            {/* Files Section */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">Files</h3>
-                <Badge variant="outline" className="text-muted-foreground">
-                  {sortedFiles.length} {sortedFiles.length === 1 ? "file" : "files"}
-                </Badge>
-              </div>
-              
-              {sortedFiles.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <div className="bg-gray-100 dark:bg-gray-800 rounded-full p-4 mb-4">
-                    <Search className="h-10 w-10 text-gray-400" />
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2">No files found</h3>
-                  <p className="text-gray-500 dark:text-gray-400 max-w-md">
-                    {searchQuery 
-                      ? `No results found for "${searchQuery}"`
-                      : currentPath.length > 0
-                        ? `This folder is empty`
-                        : "You don't have any files at the root level"}
-                  </p>
+          </Button>
+          <Dialog open={newFolderDialogOpen} onOpenChange={setNewFolderDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                New Folder
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Create new folder</DialogTitle>
+                <DialogDescription>
+                  Add a new folder to organize your files
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="folderName">Folder name</Label>
+                  <Input
+                    id="folderName"
+                    value={newFolderName}
+                    onChange={(e) => setNewFolderName(e.target.value)}
+                    placeholder="Enter folder name"
+                  />
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {sortedFiles.map((file) => (
-                    <Card key={file.id} className="overflow-hidden hover:border-primary transition-all">
-                      <CardContent className="p-4">
-                        <div className="flex items-start gap-3">
-                          <div className="bg-primary/10 rounded-md p-2">
-                            <FileText className="h-8 w-8 text-primary" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h3 className="font-medium truncate">{file.name}</h3>
-                            <div className="flex items-center text-sm text-muted-foreground mt-1">
-                              <span>{formatBytes(file.size)}</span>
-                              <span className="mx-2">•</span>
-                              <span>{formatDate(file.dateAdded)}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
-                      <CardFooter className="flex items-center justify-between border-t p-2 bg-gray-50 dark:bg-gray-800/50">
-                        <div className="flex items-center text-sm text-muted-foreground">
-                          <Folder className="h-3 w-3 mr-1" />
-                          <span>{currentPath.length > 0 ? currentPath[currentPath.length - 1] : "Root"}</span>
-                        </div>
-                        <div className="flex space-x-1">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => moveFileToFolder(file.id, null)}>
-                                Move to Root
-                              </DropdownMenuItem>
-                              {folders.length > 0 && (
-                                <>
-                                  <DropdownMenuItem className="font-semibold" disabled>
-                                    Move to folder:
-                                  </DropdownMenuItem>
-                                  {folders.slice(0, 5).map(folder => (
-                                    <DropdownMenuItem 
-                                      key={folder}
-                                      onClick={() => moveFileToFolder(file.id, folder)}
-                                    >
-                                      {folder}
-                                    </DropdownMenuItem>
-                                  ))}
-                                  {folders.length > 5 && (
-                                    <DropdownMenuItem disabled>
-                                      + {folders.length - 5} more folders
-                                    </DropdownMenuItem>
-                                  )}
-                                </>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                          
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                            <Info className="h-4 w-4" />
-                          </Button>
-                          
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                            <Share2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </CardFooter>
-                    </Card>
-                  ))}
+                <div className="text-sm text-muted-foreground">
+                  {currentPath.length > 0 ? (
+                    <p>Creating folder in: {currentPath.join('/')}</p>
+                  ) : (
+                    <p>Creating folder at root level</p>
+                  )}
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setNewFolderDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={handleCreateFolder}>
+                  Create
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-4 mb-4">
+        <div className="flex-1">
+          <Input
+            placeholder="Search files and folders..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="max-w-sm"
+            prefix={<Search className="h-4 w-4 text-muted-foreground" />}
+          />
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline">
+              Sort By
+              <ChevronRight className="h-4 w-4 ml-2" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem onClick={() => setSortBy("name-asc")}>
+              Name (A-Z)
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSortBy("name-desc")}>
+              Name (Z-A)
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSortBy("date-desc")}>
+              Newest First
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSortBy("date-asc")}>
+              Oldest First
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center h-[200px]">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+      ) : (
+        <div className={cn(
+          "grid gap-4",
+          viewMode === "grid" ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" : "grid-cols-1"
+        )}>
+          {/* Folders */}
+          {currentSubfolders.map((folder) => (
+            <Card
+              key={folder}
+              className={cn(
+                "group hover:shadow-md transition-shadow cursor-pointer",
+                viewMode === "list" && "flex items-center justify-between"
+              )}
+              onClick={() => navigateToFolder(folder)}
+            >
+              <CardContent className={cn(
+                "p-4",
+                viewMode === "list" ? "flex items-center gap-4" : "text-center"
+              )}>
+                <div className={cn(
+                  "mb-2",
+                  viewMode === "list" && "mb-0 flex items-center gap-4"
+                )}>
+                  <Folder className={cn(
+                    "h-12 w-12 mx-auto text-blue-500",
+                    viewMode === "list" && "h-8 w-8"
+                  )} />
+                  <div className="flex flex-col">
+                    <h3 className="font-semibold truncate">{folder}</h3>
+                    {viewMode === "list" && (
+                      <p className="text-sm text-muted-foreground">
+                        {getFilesInFolder(folder).length} items
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+
+          {/* Files */}
+          {sortedFiles.map((file) => (
+            <Card
+              key={file.id}
+              className={cn(
+                "group hover:shadow-md transition-shadow",
+                viewMode === "list" && "flex items-center justify-between"
+              )}
+            >
+              <CardContent 
+                className={cn(
+                  "p-4 cursor-pointer",
+                  viewMode === "list" ? "flex items-center gap-4 flex-1" : "text-center"
+                )}
+                onClick={() => handleFilePreview(file)}
+              >
+                <div className={cn(
+                  "mb-2",
+                  viewMode === "list" && "mb-0 flex items-center gap-4 flex-1"
+                )}>
+                  <FileText className={cn(
+                    "h-12 w-12 mx-auto text-gray-500",
+                    viewMode === "list" && "h-8 w-8"
+                  )} />
+                  <div className="flex flex-col flex-1">
+                    <h3 className="font-semibold truncate">{file.name}</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {formatBytes(file.size)} • {formatDate(file.dateAdded)}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+              <CardFooter className={cn(
+                "p-4 pt-0 flex justify-end gap-2",
+                viewMode === "list" && "pt-4 border-t"
+              )}>
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  onClick={() => handleFilePreview(file)}
+                >
+                  <Info className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="icon">
+                  <Share2 className="h-4 w-4" />
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onClick={() => deleteFile(file.id)}>
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* File Preview Dialog */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-4xl w-[90vw]" hideCloseButton>
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <FileText className="h-5 w-5" />
+                <DialogTitle className="text-xl">
+                  {previewFile?.name}
+                </DialogTitle>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setPreviewOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <DialogDescription>
+              {previewFile && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span>{formatBytes(previewFile.size)}</span>
+                  <span>•</span>
+                  <span>Last modified: {formatDate(previewFile.dateAdded)}</span>
                 </div>
               )}
-            </div>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4">
+            {previewFile && getPreviewContent(previewFile)}
           </div>
-        )}
-      </main>
+
+          <DialogFooter className="mt-4">
+            <div className="flex justify-end gap-2">
+              {previewFile && (
+                <Button onClick={() => window.open(previewFile.content, '_blank')}>
+                  Open in New Tab
+                </Button>
+              )}
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+// Helper function to get files in a specific folder
+function getFilesInFolder(folderPath: string) {
+  return files.filter(file => file.folder === folderPath && !file.isDeleted);
 }

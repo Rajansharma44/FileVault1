@@ -1,48 +1,58 @@
 import { useState } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { FaGoogle } from "react-icons/fa";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuthHook";
-import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
 
 export default function Register() {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const { register, loginWithGoogle } = useAuth();
-  const [_, setLocation] = useLocation();
   const { toast } = useToast();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    email: "",
+    username: "",
+    password: "",
+    confirmPassword: "",
+    name: "",
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !email || !username || !password) {
+    setIsLoading(true);
+
+    try {
+      if (formData.password !== formData.confirmPassword) {
+        toast({
+          title: "Error",
+          description: "Passwords do not match",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      await register({
+        email: formData.email,
+        username: formData.username,
+        password: formData.password,
+        name: formData.name,
+      });
+
+      navigate("/login", { 
+        state: { 
+          message: "Registration successful! Please log in with your credentials.",
+          email: formData.email 
+        } 
+      });
+    } catch (error) {
       toast({
         title: "Error",
-        description: "Please fill in all fields",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      await register({ name, email, username, password });
-      toast({
-        title: "Success",
-        description: "Account created successfully!",
-      });
-      setLocation("/");
-    } catch (error: any) {
-      toast({
-        title: "Registration Failed",
-        description: error.message || "Something went wrong",
+        description: error instanceof Error ? error.message : "Registration failed",
         variant: "destructive",
       });
     } finally {
@@ -51,138 +61,145 @@ export default function Register() {
   };
 
   const handleGoogleSignUp = async () => {
-    setIsGoogleLoading(true);
     try {
       await loginWithGoogle();
-      // The redirect will happen automatically after successful auth
     } catch (error) {
-      // Error is already handled in the loginWithGoogle function
-      console.error("Google sign up failed in component:", error);
-    } finally {
-      setIsGoogleLoading(false);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Google sign-up failed",
+        variant: "destructive",
+      });
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
-      <div className="w-full max-w-5xl grid md:grid-cols-2 gap-8 items-center">
-        {/* Hero section */}
-        <div className="hidden md:flex flex-col space-y-4 p-6">
-          <h1 className="text-4xl font-bold text-primary">FileVault</h1>
-          <p className="text-xl text-gray-600 dark:text-gray-300">
-            Join thousands of users storing and sharing files securely.
-          </p>
-          <ul className="space-y-2 mt-4">
-            <li className="flex items-center">
-              <span className="bg-primary/10 text-primary p-1 rounded-full mr-2">✓</span>
-              Free storage up to 2GB
-            </li>
-            <li className="flex items-center">
-              <span className="bg-primary/10 text-primary p-1 rounded-full mr-2">✓</span>
-              Private & encrypted storage
-            </li>
-            <li className="flex items-center">
-              <span className="bg-primary/10 text-primary p-1 rounded-full mr-2">✓</span>
-              Share files with time-limited links
-            </li>
-          </ul>
+    <div className="container relative h-screen flex-col items-center justify-center grid lg:max-w-none lg:grid-cols-2 lg:px-0">
+      <div className="relative hidden h-full flex-col bg-muted p-10 text-white lg:flex dark:border-r">
+        <div className="absolute inset-0 bg-zinc-900" />
+        <div className="relative z-20 flex items-center text-lg font-medium">
+          <img src="/logo.png" alt="Logo" className="h-8 w-8 mr-2" />
+          FileVault
         </div>
-        
-        {/* Registration form */}
-        <Card className="w-full shadow-lg">
-          <CardHeader className="flex flex-row border-b pb-2">
-            <Link href="/login">
-              <div className="w-1/2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-3 text-center font-medium rounded-tl-md cursor-pointer">
-                Login
+        <div className="relative z-20 mt-auto">
+          <blockquote className="space-y-2">
+            <p className="text-lg">
+              "FileVault has transformed how we manage our digital assets. It's secure, intuitive, and exactly what we needed."
+            </p>
+            <footer className="text-sm">Sofia Davis, CEO</footer>
+          </blockquote>
+        </div>
+      </div>
+      <div className="lg:p-8">
+        <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex flex-col space-y-2 text-center">
+                <h1 className="text-2xl font-semibold tracking-tight">
+                  Create an account
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  Enter your details below to create your account
+                </p>
               </div>
-            </Link>
-            <div className="w-1/2 bg-primary text-white py-3 text-center font-medium rounded-tr-md">
-              Register
-            </div>
-          </CardHeader>
-          
-          <CardContent className="p-6">
-            <h1 className="text-2xl font-bold text-center mb-6">Create Account</h1>
-            
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Full Name</Label>
-                <Input
-                  id="name"
-                  type="text"
-                  placeholder="John Doe"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  disabled={isLoading}
-                />
+              <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="name@example.com"
+                    value={formData.email}
+                    onChange={(e) =>
+                      setFormData({ ...formData, email: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="username">Username</Label>
+                  <Input
+                    id="username"
+                    type="text"
+                    placeholder="johndoe"
+                    value={formData.username}
+                    onChange={(e) =>
+                      setFormData({ ...formData, username: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="name">Full Name</Label>
+                  <Input
+                    id="name"
+                    type="text"
+                    placeholder="John Doe"
+                    value={formData.name}
+                    onChange={(e) =>
+                      setFormData({ ...formData, name: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={formData.password}
+                    onChange={(e) =>
+                      setFormData({ ...formData, password: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">Confirm Password</Label>
+                  <Input
+                    id="confirmPassword"
+                    type="password"
+                    value={formData.confirmPassword}
+                    onChange={(e) =>
+                      setFormData({ ...formData, confirmPassword: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+                <Button className="w-full" type="submit" disabled={isLoading}>
+                  {isLoading ? "Creating account..." : "Create Account"}
+                </Button>
+              </form>
+              <div className="relative my-4">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-2 text-muted-foreground">
+                    Or continue with
+                  </span>
+                </div>
               </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="john.doe@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  disabled={isLoading}
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
-                <Input
-                  id="username"
-                  type="text"
-                  placeholder="johndoe"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  disabled={isLoading}
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="********"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={isLoading}
-                />
-              </div>
-              
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                {isLoading ? "Creating Account..." : "Register"}
+              <Button
+                variant="outline"
+                type="button"
+                className="w-full"
+                onClick={handleGoogleSignUp}
+              >
+                <FaGoogle className="mr-2 h-4 w-4" />
+                Google
               </Button>
-            </form>
-            
-            <div className="relative my-6">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300 dark:border-gray-700"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white dark:bg-gray-800 text-gray-500">Or sign up with</span>
-              </div>
-            </div>
-            
-            <Button
-              variant="outline"
-              className="w-full flex items-center justify-center gap-2"
-              onClick={handleGoogleSignUp}
-              disabled={isGoogleLoading}
-            >
-              {isGoogleLoading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <FaGoogle className="h-4 w-4 text-red-500" />
-              )}
-              {isGoogleLoading ? "Connecting..." : "Sign up with Google"}
-            </Button>
-          </CardContent>
-        </Card>
+              <p className="text-center text-sm text-muted-foreground mt-4">
+                Already have an account?{" "}
+                <Link
+                  to="/login"
+                  className="text-primary hover:underline"
+                >
+                  Sign in
+                </Link>
+              </p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

@@ -8,10 +8,19 @@ import Dashboard from "@/pages/Dashboard";
 import SharedFiles from "@/pages/SharedFiles";
 import Categories from "@/pages/Categories";
 import Folders from "@/pages/Folders";
+import StarredFiles from "@/pages/StarredFiles";
+import Profile from "@/pages/Profile";
+import Help from "@/pages/Help";
+import GoogleAuth from "@/pages/GoogleAuth";
+import Notifications from "@/pages/Notifications";
+import Preferences from "@/pages/Preferences";
+import Security from "@/pages/Security";
 import { AuthProvider, useAuth } from "@/hooks/useAuthHook";
 import { useEffect } from "react";
 import useDarkMode from "@/hooks/useDarkMode";
 import { Loader2 } from "lucide-react";
+import { LanguageProvider } from "@/hooks/useLanguage";
+import { NotificationProvider } from '@/contexts/NotificationContext';
 
 // Protected Route Component
 function ProtectedRoute({ component: Component, ...rest }: { component: React.ComponentType, path?: string }) {
@@ -56,12 +65,24 @@ function Router() {
   return (
     <Switch>
       <Route path="/auth" component={() => <PublicRoute component={AuthPage} path="/auth" />} />
+      <Route path="/login" component={() => <PublicRoute component={AuthPage} path="/login" />} />
+      <Route path="/register" component={() => <PublicRoute component={AuthPage} path="/register" />} />
+      <Route path="/google-auth" component={GoogleAuth} />
       <Route path="/" component={() => <ProtectedRoute component={Dashboard} />} />
       <Route path="/folders" component={() => <ProtectedRoute component={Folders} />} />
       <Route path="/categories" component={() => <ProtectedRoute component={Categories} />} /> 
       <Route path="/recent" component={() => <ProtectedRoute component={Dashboard} />} />
       <Route path="/shared" component={() => <ProtectedRoute component={SharedFiles} />} />
-      <Route path="/trash" component={() => <ProtectedRoute component={Dashboard} />} /> 
+      <Route path="/starred" component={() => <ProtectedRoute component={StarredFiles} />} />
+      <Route path="/trash" component={() => <ProtectedRoute component={Dashboard} />} />
+      <Route path="/profile" component={() => <ProtectedRoute component={Profile} />} />
+      <Route path="/notifications" component={() => <ProtectedRoute component={Notifications} />} />
+      <Route path="/preferences" component={() => <ProtectedRoute component={Preferences} />} />
+      <Route path="/security" component={() => <ProtectedRoute component={Security} />} />
+      <Route path="/help/guide" component={() => <ProtectedRoute component={Help} />} />
+      <Route path="/help/faq" component={() => <ProtectedRoute component={Help} />} />
+      <Route path="/help/contact" component={() => <ProtectedRoute component={Help} />} />
+      <Route path="/help/report" component={() => <ProtectedRoute component={Help} />} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -81,8 +102,12 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <Router />
-        <Toaster />
+        <LanguageProvider>
+          <NotificationProvider>
+            <Router />
+          </NotificationProvider>
+          <Toaster />
+        </LanguageProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

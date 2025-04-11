@@ -1,4 +1,4 @@
-import { FileCard } from '@/components/FileCard';
+import FileCard from '@/components/FileCard';
 import EmptyState from '@/components/EmptyState';
 
 interface FileGridProps {

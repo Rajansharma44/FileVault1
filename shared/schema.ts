@@ -4,10 +4,13 @@ import { z } from "zod";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
-  username: text("username").notNull().unique(),
+  username: text("username"),
   password: text("password").notNull(),
   name: text("name"),
-  email: text("email"),
+  email: text("email").notNull().unique(),
+  isGoogleUser: boolean("is_google_user").default(false),
+  isVerified: boolean("is_verified").default(false),
+  photoURL: text("photo_url").default(null),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
@@ -15,6 +18,17 @@ export const insertUserSchema = createInsertSchema(users).pick({
   password: true,
   name: true,
   email: true,
+  isGoogleUser: true,
+  isVerified: true,
+  photoURL: true,
+}).extend({
+  email: z.string().email(),
+  username: z.string().optional(),
+  password: z.string().min(6),
+  name: z.string().optional(),
+  isGoogleUser: z.boolean().optional().default(false),
+  isVerified: z.boolean().optional().default(false),
+  photoURL: z.string().optional().nullable(),
 });
 
 export const files = pgTable("files", {
@@ -26,8 +40,11 @@ export const files = pgTable("files", {
   userId: integer("user_id").notNull(),
   folder: text("folder").default(""),
   dateAdded: timestamp("date_added").defaultNow(),
+  lastAccessed: timestamp("last_accessed").defaultNow(),
   isDeleted: boolean("is_deleted").default(false),
   isShared: boolean("is_shared").default(false),
+  isStarred: boolean("is_starred").default(false),
+  isFolder: boolean("is_folder").default(false),
 });
 
 export const insertFileSchema = createInsertSchema(files).pick({
@@ -37,6 +54,10 @@ export const insertFileSchema = createInsertSchema(files).pick({
   content: true,
   userId: true,
   folder: true,
+  lastAccessed: true,
+}).extend({
+  folder: z.string().optional().default(""),
+  isFolder: z.boolean().optional().default(false),
 });
 
 export const shareLinks = pgTable("share_links", {

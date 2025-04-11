@@ -9,6 +9,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { formatBytes, formatDate } from '@/lib/utils';
+import { useFiles } from '@/hooks/useFiles';
+import { useToast } from '@/hooks/use-toast';
 
 interface FilePreviewModalProps {
   isOpen: boolean;
@@ -26,6 +28,9 @@ export default function FilePreviewModal({
   onDelete,
 }: FilePreviewModalProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const { downloadFile } = useFiles();
+  const { toast } = useToast();
   
   if (!file) return null;
   
@@ -39,32 +44,141 @@ export default function FilePreviewModal({
     }
   };
   
+  const handleDownload = async () => {
+    try {
+      setIsDownloading(true);
+      
+      // Client-side download implementation
+      if (file.content) {
+        // Create a blob from the file content
+        let blob;
+        let filename = file.name;
+        
+        if (file.content.startsWith('data:')) {
+          // Handle data URLs
+          const base64Data = file.content.split(',')[1];
+          const byteCharacters = atob(base64Data);
+          const byteArrays = [];
+          
+          for (let offset = 0; offset < byteCharacters.length; offset += 1024) {
+            const slice = byteCharacters.slice(offset, offset + 1024);
+            const byteNumbers = new Array(slice.length);
+            
+            for (let i = 0; i < slice.length; i++) {
+              byteNumbers[i] = slice.charCodeAt(i);
+            }
+            
+            const byteArray = new Uint8Array(byteNumbers);
+            byteArrays.push(byteArray);
+          }
+          
+          blob = new Blob(byteArrays, { type: file.type });
+        } else {
+          // Handle plain text content
+          blob = new Blob([file.content], { type: file.type });
+        }
+        
+        // Create download link
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        
+        // Clean up
+        setTimeout(() => {
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        }, 100);
+        
+        toast({
+          title: "Download started",
+          description: `${file.name} is being downloaded`,
+        });
+      } else {
+        throw new Error("File content not available");
+      }
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      toast({
+        title: "Download failed",
+        description: "Failed to download the file. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+  
   const renderFilePreview = () => {
+    console.log('Rendering preview for file:', {
+      name: file.name,
+      type: file.type,
+      contentPreview: file.content ? file.content.substring(0, 50) + '...' : 'No content'
+    });
+
     if (!file?.type) return <FileIcon className="h-32 w-32 text-primary mx-auto" />;
     
     if (file.type.startsWith('image/')) {
       return (
         <div className="flex items-center justify-center h-72 overflow-hidden bg-gray-100 dark:bg-gray-800 rounded-md">
           <img
-            src={file.previewUrl || 'placeholder'}
+            src={file.content}
             alt={file.name}
             className="max-h-full max-w-full object-contain"
             onError={(e) => {
-              e.currentTarget.src = 'placeholder';
+              console.error('Image failed to load:', {
+                name: file.name,
+                contentLength: file.content?.length || 0
+              });
+              e.currentTarget.style.display = 'none';
+              const fallback = e.currentTarget.parentElement?.querySelector('.fallback');
+              if (fallback) fallback.style.display = 'flex';
             }}
           />
+          <div className="fallback hidden absolute inset-0 flex-col items-center justify-center">
+            <FileIcon className="h-16 w-16 text-gray-400 mb-2" />
+            <p className="text-sm text-gray-500">Failed to load image</p>
+          </div>
         </div>
       );
     }
     
     if (file.type.startsWith('text/')) {
-      return (
-        <div className="h-72 bg-gray-100 dark:bg-gray-800 rounded-md p-4 overflow-auto">
-          <pre className="whitespace-pre-wrap break-words font-mono text-sm">
-            {file.content || 'Content preview not available'}
-          </pre>
-        </div>
-      );
+      try {
+        // Check if content is a valid base64 data URL
+        if (file.content && file.content.includes('base64,')) {
+          const base64Content = file.content.split('base64,')[1];
+          // Validate base64 string
+          if (/^[A-Za-z0-9+/]*={0,2}$/.test(base64Content)) {
+            return (
+              <div className="h-72 bg-gray-100 dark:bg-gray-800 rounded-md p-4 overflow-auto">
+                <pre className="whitespace-pre-wrap break-words font-mono text-sm">
+                  {atob(base64Content)}
+                </pre>
+              </div>
+            );
+          }
+        }
+        // If content is not base64, try to display it directly
+        return (
+          <div className="h-72 bg-gray-100 dark:bg-gray-800 rounded-md p-4 overflow-auto">
+            <pre className="whitespace-pre-wrap break-words font-mono text-sm">
+              {file.content || 'Content preview not available'}
+            </pre>
+          </div>
+        );
+      } catch (error) {
+        console.error('Error previewing text file:', error);
+        return (
+          <div className="h-72 bg-gray-100 dark:bg-gray-800 rounded-md p-4 overflow-auto">
+            <pre className="whitespace-pre-wrap break-words font-mono text-sm text-red-500">
+              Error previewing file content
+            </pre>
+          </div>
+        );
+      }
     }
     
     if (file.type.startsWith('video/')) {
@@ -73,7 +187,7 @@ export default function FilePreviewModal({
           <video
             controls
             className="max-h-full max-w-full"
-            src={file.url || ''}
+            src={file.content}
             onError={(e) => {
               e.currentTarget.poster = 'placeholder';
             }}
@@ -91,7 +205,7 @@ export default function FilePreviewModal({
           <audio
             controls
             className="w-full"
-            src={file.url || ''}
+            src={file.content}
           >
             Your browser doesn't support audio playback.
           </audio>
@@ -122,9 +236,6 @@ export default function FilePreviewModal({
           <DialogTitle className="text-xl truncate">
             {file.name}
           </DialogTitle>
-          <Button variant="ghost" size="icon" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
         </DialogHeader>
         
         {renderFilePreview()}
@@ -172,9 +283,13 @@ export default function FilePreviewModal({
               <Share2 className="h-4 w-4 mr-2" />
               Share
             </Button>
-            <Button size="sm">
+            <Button 
+              size="sm" 
+              onClick={handleDownload}
+              disabled={isDownloading}
+            >
               <Download className="h-4 w-4 mr-2" />
-              Download
+              {isDownloading ? 'Downloading...' : 'Download'}
             </Button>
           </div>
         </DialogFooter>

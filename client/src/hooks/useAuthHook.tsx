@@ -1,8 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { auth, signInWithGoogle, handleAuthRedirect } from "@/lib/firebase";
-import { onAuthStateChanged, signOut, User as FirebaseUser } from "firebase/auth";
 
 interface User {
   id: string;
@@ -13,37 +11,22 @@ interface User {
   isGoogleUser?: boolean;
 }
 
-type GoogleLoginResult = {
-  success: boolean;
-  user?: {
-    id: string;
-    name?: string | null;
-    email?: string | null;
-    photoURL?: string | null;
-  };
-  credential?: any;
-  error?: {
-    code?: string;
-    message: string;
-    email?: string;
-  };
-};
-
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   loading: boolean;
-  login: (username: string, password: string) => Promise<void>;
-  loginWithGoogle: () => Promise<GoogleLoginResult>;
+  login: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
+  updateProfile: (data: { name?: string | null; username?: string | null; photoURL?: string | null }) => Promise<void>;
 }
 
 interface RegisterData {
-  username: string;
+  username?: string;
   password: string;
   name?: string;
-  email?: string;
+  email: string;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -51,195 +34,190 @@ const AuthContext = createContext<AuthContextType>({
   isAuthenticated: false,
   loading: true,
   login: async () => {},
-  loginWithGoogle: async () => ({ success: false, error: { message: "Not implemented" } }),
+  loginWithGoogle: async () => {},
   register: async () => {},
   logout: async () => {},
+  updateProfile: async () => {},
 });
 
-// Convert a Firebase user to our app's user format
-const formatFirebaseUser = (firebaseUser: FirebaseUser): User => {
-  return {
-    id: firebaseUser.uid,
-    username: firebaseUser.email?.split('@')[0] || firebaseUser.displayName || 'user',
-    name: firebaseUser.displayName || '',
-    email: firebaseUser.email || '',
-    photoURL: firebaseUser.photoURL || '',
-    isGoogleUser: true
-  };
-};
+export const useAuth = () => useContext(AuthContext);
 
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  // Handle auth state changes from Firebase
+  // Check if user is already logged in
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        // User is signed in with Firebase
-        const formattedUser = formatFirebaseUser(firebaseUser);
-        setUser(formattedUser);
+    const checkAuth = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const storedUser = localStorage.getItem("user");
         
-        // If this is a Google user, we might want to save this to our backend
-        if (formattedUser.isGoogleUser) {
+        if (!token) {
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+        
+        // If we have a stored user, set it immediately for a faster UI response
+        if (storedUser) {
           try {
-            // You can sync with your server here if needed
-            await apiRequest("POST", "/api/auth/google-sync", { 
-              user: formattedUser 
-            });
-          } catch (error) {
-            console.warn("Could not sync Google user with server:", error);
+            const parsedUser = JSON.parse(storedUser);
+            setUser(parsedUser);
+          } catch (e) {
+            console.error("Error parsing stored user:", e);
+            localStorage.removeItem("user");
           }
         }
-      } else {
-        // No Firebase user, check traditional authentication
+
+        // Verify the token with the server
         try {
-          const res = await fetch("/api/auth/me", { credentials: "include" });
+          const response = await apiRequest<User>("/api/user/profile");
+          setUser(response);
           
-          if (res.ok) {
-            const userData = await res.json();
-            setUser(userData);
-          } else {
-            setUser(null);
-          }
+          // Update the stored user data
+          localStorage.setItem("user", JSON.stringify(response));
         } catch (error) {
-          console.error("Auth check error:", error);
+          console.error("Auth check failed:", error);
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
           setUser(null);
         }
+      } catch (error) {
+        console.error("Auth check error:", error);
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        setUser(null);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    };
 
-    // Check for redirect result (in case of mobile redirect flow)
-    handleAuthRedirect().then(result => {
-      if (result.success && result.user) {
-        // No need to set user here as onAuthStateChanged will handle it
-        toast({
-          title: "Signed in with Google",
-          description: `Welcome ${result.user.name || 'back'}!`
-        });
-      }
-    });
+    checkAuth();
+  }, []);
 
-    // Cleanup subscription
-    return () => unsubscribe();
-  }, [toast]);
-
-  const login = async (username: string, password: string) => {
+  const login = async (email: string, password: string) => {
     try {
-      const res = await apiRequest("POST", "/api/auth/login", { username, password });
-      const userData = await res.json();
-      setUser(userData);
-    } catch (error: any) {
-      console.error("Login error:", error);
-      throw new Error(error.message || "Login failed");
-    }
-  };
+      const response = await apiRequest<{ token: string; user: User }>("/api/auth/login", {
+        method: "POST",
+        body: { email, password },
+      });
 
-  const loginWithGoogle = async () => {
-    try {
-      const result = await signInWithGoogle();
+      // Store the token in localStorage
+      localStorage.setItem("token", response.token);
       
-      if (result.success && result.user) {
-        toast({
-          title: "Signed in with Google",
-          description: `Welcome ${result.user.name || 'back'}!`
-        });
-        // The onAuthStateChanged listener will handle setting the user
-        return result;
-      } else if (result.error) {
-        console.error("Google login error:", result.error);
-        
-        // Handle specific error cases
-        if (result.error.code === 'auth/operation-not-allowed') {
-          toast({
-            title: "Google Sign-in Not Enabled",
-            description: "Google sign-in is not enabled in the Firebase console. Please contact the administrator.",
-            variant: "destructive",
-          });
-        } else {
-          toast({
-            title: "Google Sign-in Failed",
-            description: result.error.message || "Could not sign in with Google",
-            variant: "destructive",
-          });
-        }
-        
-        return result; // Return the error result for the caller to handle if needed
-      }
+      // Store the user data in localStorage for persistence
+      localStorage.setItem("user", JSON.stringify(response.user));
       
-      return { success: false, error: { message: "Unknown error during Google sign-in" } };
-    } catch (error: any) {
-      console.error("Google login error:", error);
+      // Update the user state
+      setUser(response.user);
+      
       toast({
-        title: "Google Sign-in Failed",
-        description: error.message || "Could not sign in with Google",
+        title: "Success",
+        description: "Logged in successfully",
+      });
+    } catch (error) {
+      console.error("Login failed:", error);
+      
+      // Provide a more user-friendly error message
+      const errorMessage = error instanceof Error 
+        ? (error.message === "Invalid credentials" 
+            ? "Invalid email or password. Please check your credentials and try again." 
+            : error.message)
+        : "Login failed. Please try again.";
+      
+      toast({
+        title: "Login Failed",
+        description: errorMessage,
         variant: "destructive",
       });
-      
-      return { 
-        success: false, 
-        error: { 
-          code: error.code || 'unknown',
-          message: error.message || "Could not sign in with Google" 
-        } 
-      };
-    }
-  };
-
-  const register = async (data: RegisterData) => {
-    try {
-      const res = await apiRequest("POST", "/api/auth/register", data);
-      const userData = await res.json();
-      setUser(userData);
-    } catch (error: any) {
-      console.error("Register error:", error);
-      throw new Error(error.message || "Registration failed");
+      throw error;
     }
   };
 
   const logout = async () => {
     try {
-      // First check if we have a Firebase user
-      if (auth.currentUser) {
-        await signOut(auth);
-      }
-      
-      // Also logout from our backend
-      await apiRequest("POST", "/api/auth/logout", {});
-      setUser(null);
-      toast({
-        title: "Logged out",
-        description: "You have been logged out successfully",
-      });
+      await apiRequest("/api/auth/logout", { method: "POST" });
     } catch (error) {
-      console.error("Logout error:", error);
+      console.error("Logout failed:", error);
+    } finally {
+      // Clear all auth data from localStorage
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      setUser(null);
+    }
+  };
+
+  const register = async (data: RegisterData) => {
+    try {
+      // Ensure all required fields are present and properly formatted
+      const userData = {
+        email: data.email,
+        password: data.password,
+        username: data.username || undefined,
+        name: data.name || undefined,
+        isGoogleUser: false,
+        isVerified: false
+      };
+
+      const response = await apiRequest<{ user: User }>("/api/auth/register", {
+        method: "POST",
+        body: userData,
+      });
+
+      toast({
+        title: "Success",
+        description: "Account created successfully. Please log in.",
+      });
+      
+      // Return the user data without setting it in state
+      return response.user;
+    } catch (error) {
+      console.error("Registration failed:", error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Registration failed",
+        variant: "destructive",
+      });
       throw error;
     }
   };
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isAuthenticated: !!user,
-        loading,
-        login,
-        loginWithGoogle,
-        register,
-        logout,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
-};
+  const updateProfile = async (data: { name?: string | null; username?: string | null; photoURL?: string | null }) => {
+    try {
+      const response = await apiRequest<User>("/api/user/profile", {
+        method: "PATCH",
+        body: {
+          name: data.name || null,
+          username: data.username || null,
+          photoURL: data.photoURL || null
+        }
+      });
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return context;
-};
+      // Update local storage with new user data
+      const updatedUser = { ...user, ...response };
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      
+      // Update state
+      setUser(updatedUser);
+      
+      return response;
+    } catch (error) {
+      console.error("Profile update failed:", error);
+      throw error;
+    }
+  };
+
+  const value = {
+    user,
+    loading,
+    isAuthenticated: !!user,
+    login,
+    logout,
+    register,
+    updateProfile,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}

@@ -17,7 +17,7 @@ export default function AuthPage() {
   
   // Form states
   const [loginForm, setLoginForm] = useState({
-    username: '',
+    email: '',
     password: '',
   });
   
@@ -52,19 +52,40 @@ export default function AuthPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    try {
-      setIsLoading(true);
-      await login(loginForm.username, loginForm.password);
+    // Validate form fields
+    if (!loginForm.email) {
       toast({
-        title: 'Login successful',
-        description: 'Welcome back!',
-      });
-    } catch (error: any) {
-      toast({
-        title: 'Login failed',
-        description: error.message || 'Check your credentials and try again',
+        title: 'Email required',
+        description: 'Please enter your email address',
         variant: 'destructive',
       });
+      return;
+    }
+    
+    if (!loginForm.password) {
+      toast({
+        title: 'Password required',
+        description: 'Please enter your password',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      
+      // Log the login attempt for debugging
+      console.log('Attempting to login with email:', loginForm.email);
+      
+      await login(loginForm.email, loginForm.password);
+      
+      // Success toast is already shown in the login function
+      
+      // Navigate to dashboard
+      setLocation('/');
+    } catch (error) {
+      // Error toast is already shown in the login function
+      console.error('Login error:', error);
     } finally {
       setIsLoading(false);
     }
@@ -118,24 +139,51 @@ export default function AuthPage() {
       return;
     }
     
-    try {
-      setIsLoading(true);
-      await register({
-        username: registerForm.username,
-        password: registerForm.password,
-        name: registerForm.name,
-        email: registerForm.email,
-      });
+    if (!registerForm.email) {
       toast({
-        title: 'Account created',
-        description: 'Your account has been created successfully',
-      });
-    } catch (error: any) {
-      toast({
-        title: 'Registration failed',
-        description: error.message || 'Could not create your account',
+        title: 'Email required',
+        description: 'Please provide your email address',
         variant: 'destructive',
       });
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      
+      // Log the registration data for debugging
+      console.log('Registering with data:', {
+        email: registerForm.email,
+        username: registerForm.username || undefined,
+        password: '********',
+        name: registerForm.name || undefined,
+      });
+      
+      await register({
+        username: registerForm.username || undefined,
+        password: registerForm.password,
+        name: registerForm.name || undefined,
+        email: registerForm.email,
+      });
+      
+      // Show success message and switch to login tab
+      toast({
+        title: 'Account created',
+        description: 'Your account has been created successfully. Please log in with your credentials.',
+      });
+      
+      // Switch to login tab
+      setActiveTab('login');
+      
+      // Pre-fill the login form with the registered email
+      setLoginForm(prev => ({
+        ...prev,
+        email: registerForm.email,
+        password: '',
+      }));
+    } catch (error) {
+      console.error('Registration error:', error);
+      // Error toast is already shown in the register function
     } finally {
       setIsLoading(false);
     }
@@ -174,15 +222,15 @@ export default function AuthPage() {
                 <form onSubmit={handleLogin}>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="login-username">Username</Label>
+                      <Label htmlFor="login-email">Email</Label>
                       <div className="relative">
-                        <UserRound className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                        <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                         <Input
-                          id="login-username"
-                          name="username"
-                          placeholder="Enter your username"
+                          id="login-email"
+                          name="email"
+                          placeholder="Enter your email"
                           className="pl-10"
-                          value={loginForm.username}
+                          value={loginForm.email}
                           onChange={handleLoginChange}
                           required
                           disabled={isLoading}
@@ -235,7 +283,7 @@ export default function AuthPage() {
                     <Button
                       type="submit"
                       className="w-full"
-                      disabled={isLoading || !loginForm.username || !loginForm.password}
+                      disabled={isLoading || !loginForm.email || !loginForm.password}
                     >
                       {isLoading ? (
                         <>

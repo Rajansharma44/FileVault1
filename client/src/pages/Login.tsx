@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useLocation } from "wouter";
+import { useState, useEffect } from "react";
+import { Link, useLocation, useNavigate } from "wouter";
 import { FaGoogle } from "react-icons/fa";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,45 +10,48 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
 export default function Login() {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const { login, loginWithGoogle } = useAuth();
-  const [_, setLocation] = useLocation();
+  const { login } = useAuth();
   const { toast } = useToast();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    email: location.state?.email || "",
+    password: "",
+  });
+
+  useEffect(() => {
+    // Show registration success message if coming from registration
+    if (location.state?.message) {
+      toast({
+        title: "Success",
+        description: location.state.message,
+      });
+    }
+  }, [location.state, toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username || !password) {
-      toast({
-        title: "Error",
-        description: "Please fill in all fields",
-        variant: "destructive",
-      });
-      return;
-    }
+    setLoading(true);
 
-    setIsLoading(true);
     try {
-      await login(username, password);
-      setLocation("/");
-    } catch (error: any) {
-      toast({
-        title: "Login Failed",
-        description: error.message || "Invalid username or password",
-        variant: "destructive",
-      });
+      await login(formData.email, formData.password);
+      navigate("/");
+    } catch (error) {
+      console.error("Login error:", error);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
+
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const { loginWithGoogle } = useAuth();
 
   const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true);
     try {
       await loginWithGoogle();
-      // The redirect will happen automatically after successful auth
+      navigate("/");
     } catch (error) {
       // Error is already handled in the loginWithGoogle function
       console.error("Google sign in failed in component:", error);
@@ -100,14 +103,14 @@ export default function Login() {
             
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor="email">Email</Label>
                 <Input
-                  id="username"
-                  type="text"
-                  placeholder="Username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  disabled={isLoading}
+                  id="email"
+                  type="email"
+                  placeholder="Email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  disabled={loading}
                 />
               </div>
               
@@ -117,15 +120,15 @@ export default function Login() {
                   id="password"
                   type="password"
                   placeholder="Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={isLoading}
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  disabled={loading}
                 />
               </div>
               
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                {isLoading ? "Logging in..." : "Login"}
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {loading ? "Logging in..." : "Login"}
               </Button>
             </form>
             
