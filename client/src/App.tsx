@@ -11,7 +11,6 @@ import Folders from "@/pages/Folders";
 import StarredFiles from "@/pages/StarredFiles";
 import Profile from "@/pages/Profile";
 import Help from "@/pages/Help";
-import GoogleAuth from "@/pages/GoogleAuth";
 import Notifications from "@/pages/Notifications";
 import Preferences from "@/pages/Preferences";
 import Security from "@/pages/Security";
@@ -67,7 +66,6 @@ function Router() {
       <Route path="/auth" component={() => <PublicRoute component={AuthPage} path="/auth" />} />
       <Route path="/login" component={() => <PublicRoute component={AuthPage} path="/login" />} />
       <Route path="/register" component={() => <PublicRoute component={AuthPage} path="/register" />} />
-      <Route path="/google-auth" component={GoogleAuth} />
       <Route path="/" component={() => <ProtectedRoute component={Dashboard} />} />
       <Route path="/folders" component={() => <ProtectedRoute component={Folders} />} />
       <Route path="/categories" component={() => <ProtectedRoute component={Categories} />} /> 

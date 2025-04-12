@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useLocation, useNavigate } from "wouter";
-import { FaGoogle } from "react-icons/fa";
+import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,23 +11,24 @@ import { Loader2 } from "lucide-react";
 export default function Login() {
   const { login } = useAuth();
   const { toast } = useToast();
-  const location = useLocation();
-  const navigate = useNavigate();
+  const [location, setLocation] = useLocation();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    email: location.state?.email || "",
+    email: "",
     password: "",
   });
 
+  // Handle success message from URL search params instead of state
   useEffect(() => {
-    // Show registration success message if coming from registration
-    if (location.state?.message) {
+    const params = new URLSearchParams(window.location.search);
+    const message = params.get('message');
+    if (message) {
       toast({
         title: "Success",
-        description: location.state.message,
+        description: message,
       });
     }
-  }, [location.state, toast]);
+  }, [toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,27 +36,11 @@ export default function Login() {
 
     try {
       await login(formData.email, formData.password);
-      navigate("/");
+      setLocation("/");
     } catch (error) {
       console.error("Login error:", error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const { loginWithGoogle } = useAuth();
-
-  const handleGoogleSignIn = async () => {
-    setIsGoogleLoading(true);
-    try {
-      await loginWithGoogle();
-      navigate("/");
-    } catch (error) {
-      // Error is already handled in the loginWithGoogle function
-      console.error("Google sign in failed in component:", error);
-    } finally {
-      setIsGoogleLoading(false);
     }
   };
 
@@ -131,29 +115,6 @@ export default function Login() {
                 {loading ? "Logging in..." : "Login"}
               </Button>
             </form>
-            
-            <div className="relative my-6">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300 dark:border-gray-700"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white dark:bg-gray-800 text-gray-500">Or continue with</span>
-              </div>
-            </div>
-            
-            <Button
-              variant="outline"
-              className="w-full flex items-center justify-center gap-2"
-              onClick={handleGoogleSignIn}
-              disabled={isGoogleLoading}
-            >
-              {isGoogleLoading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <FaGoogle className="h-4 w-4 text-red-500" />
-              )}
-              {isGoogleLoading ? "Connecting..." : "Sign in with Google"}
-            </Button>
           </CardContent>
         </Card>
       </div>

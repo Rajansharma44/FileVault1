@@ -2,34 +2,12 @@ import { useState, ChangeEvent } from 'react';
 import { 
   Menu, 
   Search, 
-  Upload, 
-  SortAsc, 
-  SortDesc, 
-  Clock, 
-  ArrowDownUp, 
-  File,
-  User,
-  Bell,
-  HelpCircle,
-  Languages,
-  Globe,
-  Settings,
-  Share2,
-  Star
+  Upload
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import SearchBar from '@/components/SearchBar';
 import UserMenu from '@/components/UserMenu';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Link } from 'wouter';
 import { useLanguage, Language } from '@/hooks/useLanguage';
 

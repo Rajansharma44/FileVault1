@@ -8,7 +8,6 @@ interface User {
   name?: string;
   email?: string;
   photoURL?: string;
-  isGoogleUser?: boolean;
 }
 
 interface AuthContextType {
@@ -16,7 +15,6 @@ interface AuthContextType {
   isAuthenticated: boolean;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  loginWithGoogle: () => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (data: { name?: string | null; username?: string | null; photoURL?: string | null }) => Promise<void>;
@@ -34,7 +32,6 @@ const AuthContext = createContext<AuthContextType>({
   isAuthenticated: false,
   loading: true,
   login: async () => {},
-  loginWithGoogle: async () => {},
   register: async () => {},
   logout: async () => {},
   updateProfile: async () => {},
@@ -157,7 +154,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         password: data.password,
         username: data.username || undefined,
         name: data.name || undefined,
-        isGoogleUser: false,
         isVerified: false
       };
 
