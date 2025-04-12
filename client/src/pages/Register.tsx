@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { FaGoogle } from "react-icons/fa";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +8,7 @@ import { useAuth } from "@/hooks/useAuthHook";
 import { useToast } from "@/components/ui/use-toast";
 
 export default function Register() {
-  const { register, loginWithGoogle } = useAuth();
+  const { register } = useAuth();
   const { toast } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
@@ -57,18 +56,6 @@ export default function Register() {
       });
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleGoogleSignUp = async () => {
-    try {
-      await loginWithGoogle();
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Google sign-up failed",
-        variant: "destructive",
-      });
     }
   };
 
@@ -169,25 +156,6 @@ export default function Register() {
                   {isLoading ? "Creating account..." : "Create Account"}
                 </Button>
               </form>
-              <div className="relative my-4">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-background px-2 text-muted-foreground">
-                    Or continue with
-                  </span>
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                type="button"
-                className="w-full"
-                onClick={handleGoogleSignUp}
-              >
-                <FaGoogle className="mr-2 h-4 w-4" />
-                Google
-              </Button>
               <p className="text-center text-sm text-muted-foreground mt-4">
                 Already have an account?{" "}
                 <Link

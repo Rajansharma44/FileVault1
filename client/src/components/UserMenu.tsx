@@ -1,4 +1,4 @@
-import { User, Settings, LogOut, HelpCircle } from 'lucide-react';
+import { User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -65,26 +65,6 @@ export default function UserMenu({ user, onLogout }: UserMenuProps) {
             <User className="mr-2 h-4 w-4" />
             <span>{t('profile')}</span>
           </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link href="/settings" className="cursor-pointer">
-            <Settings className="mr-2 h-4 w-4" />
-            <span>{t('settings')}</span>
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link href="/help" className="cursor-pointer">
-            <HelpCircle className="mr-2 h-4 w-4" />
-            <span>{t('help')}</span>
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem 
-          className="cursor-pointer text-red-600"
-          onClick={onLogout}
-        >
-          <LogOut className="mr-2 h-4 w-4" />
-          <span>{t('logout')}</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

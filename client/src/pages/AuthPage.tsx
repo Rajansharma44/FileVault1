@@ -30,7 +30,7 @@ export default function AuthPage() {
   });
   
   const { toast } = useToast();
-  const { user, isAuthenticated, login, loginWithGoogle, register } = useAuth();
+  const { user, isAuthenticated, login, register } = useAuth();
   
   // Redirect if already logged in
   useEffect(() => {
@@ -87,33 +87,6 @@ export default function AuthPage() {
       // Error toast is already shown in the login function
       console.error('Login error:', error);
     } finally {
-      setIsLoading(false);
-    }
-  };
-  
-  const handleGoogleLogin = async () => {
-    try {
-      setIsLoading(true);
-      const result = await loginWithGoogle();
-      
-      // If it was successful, loginWithGoogle already shows a success toast
-      // and the router will redirect due to the auth change
-      
-      // If there was an error but loginWithGoogle didn't throw (handled internally)
-      if (!result.success) {
-        // The toast is already shown in the loginWithGoogle function,
-        // we just need to reset the loading state
-        setIsLoading(false);
-      }
-    } catch (error: any) {
-      // This should not happen as loginWithGoogle catches errors internally,
-      // but just in case
-      console.error("Uncaught error in Google login:", error);
-      toast({
-        title: 'Google login failed',
-        description: error.message || 'Could not sign in with Google',
-        variant: 'destructive',
-      });
       setIsLoading(false);
     }
   };
@@ -256,86 +229,40 @@ export default function AuthPage() {
                           name="password"
                           type={showPassword ? "text" : "password"}
                           placeholder="Enter your password"
-                          className="pl-10 pr-10"
+                          className="pl-10"
                           value={loginForm.password}
                           onChange={handleLoginChange}
                           required
                           disabled={isLoading}
                         />
-                        <Button
+                        <button
                           type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="absolute right-0 top-0 h-full px-3"
+                          className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
                           onClick={togglePasswordVisibility}
                         >
                           {showPassword ? (
-                            <EyeOff className="h-4 w-4 text-gray-400" />
+                            <EyeOff className="h-4 w-4" />
                           ) : (
-                            <Eye className="h-4 w-4 text-gray-400" />
+                            <Eye className="h-4 w-4" />
                           )}
-                        </Button>
+                        </button>
                       </div>
                     </div>
                   </CardContent>
-                  
                   <CardFooter className="flex flex-col space-y-4">
                     <Button
                       type="submit"
                       className="w-full"
-                      disabled={isLoading || !loginForm.email || !loginForm.password}
+                      disabled={isLoading}
                     >
                       {isLoading ? (
                         <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Please wait
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Logging in...
                         </>
                       ) : (
-                        'Sign In'
+                        "Login"
                       )}
-                    </Button>
-                    
-                    <div className="relative w-full">
-                      <div className="absolute inset-0 flex items-center">
-                        <span className="w-full border-t" />
-                      </div>
-                      <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-background px-2 text-muted-foreground">
-                          Or continue with
-                        </span>
-                      </div>
-                    </div>
-                    
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      onClick={handleGoogleLogin}
-                      disabled={isLoading}
-                    >
-                      <svg
-                        className="mr-2 h-4 w-4"
-                        viewBox="0 0 24 24"
-                        xmlns="http://www.w3.org/2000/svg"
-                      >
-                        <path
-                          d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                          fill="#4285F4"
-                        />
-                        <path
-                          d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                          fill="#34A853"
-                        />
-                        <path
-                          d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                          fill="#FBBC05"
-                        />
-                        <path
-                          d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                          fill="#EA4335"
-                        />
-                        <path d="M1 1h22v22H1z" fill="none" />
-                      </svg>
-                      Sign in with Google
                     </Button>
                   </CardFooter>
                 </form>
@@ -347,46 +274,11 @@ export default function AuthPage() {
                 <CardHeader>
                   <CardTitle>Create an account</CardTitle>
                   <CardDescription>
-                    Sign up to access all features
+                    Enter your details to create a new account
                   </CardDescription>
                 </CardHeader>
                 <form onSubmit={handleRegister}>
                   <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="register-username">Username</Label>
-                        <div className="relative">
-                          <UserRound className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                          <Input
-                            id="register-username"
-                            name="username"
-                            placeholder="Choose a username"
-                            className="pl-10"
-                            value={registerForm.username}
-                            onChange={handleRegisterChange}
-                            required
-                            disabled={isLoading}
-                          />
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <Label htmlFor="register-name">Full Name</Label>
-                        <div className="relative">
-                          <UserRound className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                          <Input
-                            id="register-name"
-                            name="name"
-                            placeholder="Your full name"
-                            className="pl-10"
-                            value={registerForm.name}
-                            onChange={handleRegisterChange}
-                            disabled={isLoading}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    
                     <div className="space-y-2">
                       <Label htmlFor="register-email">Email</Label>
                       <div className="relative">
@@ -394,11 +286,45 @@ export default function AuthPage() {
                         <Input
                           id="register-email"
                           name="email"
-                          type="email"
-                          placeholder="your.email@example.com"
+                          placeholder="Enter your email"
                           className="pl-10"
                           value={registerForm.email}
                           onChange={handleRegisterChange}
+                          required
+                          disabled={isLoading}
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="register-username">Username</Label>
+                      <div className="relative">
+                        <UserRound className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                        <Input
+                          id="register-username"
+                          name="username"
+                          placeholder="Choose a username"
+                          className="pl-10"
+                          value={registerForm.username}
+                          onChange={handleRegisterChange}
+                          required
+                          disabled={isLoading}
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="register-name">Full Name</Label>
+                      <div className="relative">
+                        <UserRound className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                        <Input
+                          id="register-name"
+                          name="name"
+                          placeholder="Enter your full name"
+                          className="pl-10"
+                          value={registerForm.name}
+                          onChange={handleRegisterChange}
+                          required
                           disabled={isLoading}
                         />
                       </div>
@@ -413,34 +339,32 @@ export default function AuthPage() {
                           name="password"
                           type={showPassword ? "text" : "password"}
                           placeholder="Create a password"
-                          className="pl-10 pr-10"
+                          className="pl-10"
                           value={registerForm.password}
                           onChange={handleRegisterChange}
                           required
                           disabled={isLoading}
                         />
-                        <Button
+                        <button
                           type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="absolute right-0 top-0 h-full px-3"
+                          className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
                           onClick={togglePasswordVisibility}
                         >
                           {showPassword ? (
-                            <EyeOff className="h-4 w-4 text-gray-400" />
+                            <EyeOff className="h-4 w-4" />
                           ) : (
-                            <Eye className="h-4 w-4 text-gray-400" />
+                            <Eye className="h-4 w-4" />
                           )}
-                        </Button>
+                        </button>
                       </div>
                     </div>
                     
                     <div className="space-y-2">
-                      <Label htmlFor="register-confirm-password">Confirm Password</Label>
+                      <Label htmlFor="register-confirmPassword">Confirm Password</Label>
                       <div className="relative">
                         <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                         <Input
-                          id="register-confirm-password"
+                          id="register-confirmPassword"
                           name="confirmPassword"
                           type={showPassword ? "text" : "password"}
                           placeholder="Confirm your password"
@@ -453,70 +377,20 @@ export default function AuthPage() {
                       </div>
                     </div>
                   </CardContent>
-                  
                   <CardFooter className="flex flex-col space-y-4">
                     <Button
                       type="submit"
                       className="w-full"
-                      disabled={
-                        isLoading ||
-                        !registerForm.username ||
-                        !registerForm.password ||
-                        !registerForm.confirmPassword ||
-                        registerForm.password !== registerForm.confirmPassword
-                      }
+                      disabled={isLoading}
                     >
                       {isLoading ? (
                         <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating account
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Creating account...
                         </>
                       ) : (
-                        'Create Account'
+                        "Create Account"
                       )}
-                    </Button>
-                    
-                    <div className="relative w-full">
-                      <div className="absolute inset-0 flex items-center">
-                        <span className="w-full border-t" />
-                      </div>
-                      <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-background px-2 text-muted-foreground">
-                          Or continue with
-                        </span>
-                      </div>
-                    </div>
-                    
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      onClick={handleGoogleLogin}
-                      disabled={isLoading}
-                    >
-                      <svg
-                        className="mr-2 h-4 w-4"
-                        viewBox="0 0 24 24"
-                        xmlns="http://www.w3.org/2000/svg"
-                      >
-                        <path
-                          d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                          fill="#4285F4"
-                        />
-                        <path
-                          d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                          fill="#34A853"
-                        />
-                        <path
-                          d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                          fill="#FBBC05"
-                        />
-                        <path
-                          d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                          fill="#EA4335"
-                        />
-                        <path d="M1 1h22v22H1z" fill="none" />
-                      </svg>
-                      Sign up with Google
                     </Button>
                   </CardFooter>
                 </form>
@@ -527,87 +401,82 @@ export default function AuthPage() {
       </div>
       
       {/* Right Column - Hero Section */}
-      <div className="hidden lg:flex lg:flex-col lg:w-1/2 bg-primary text-white p-12 justify-center">
-        <div className="max-w-md mx-auto space-y-6">
-          <h1 className="text-4xl font-bold">Welcome to FileVault</h1>
-          <p className="text-xl">
-            Your secure cloud storage solution for all your digital assets
+      <div className="hidden lg:flex lg:w-1/2 bg-primary/5 dark:bg-primary/10 flex-col justify-center p-12">
+        <div className="max-w-md">
+          <h2 className="text-3xl font-bold mb-4">Secure File Storage</h2>
+          <p className="text-lg mb-8">
+            Store, manage, and share your files securely from anywhere. FileVault provides a simple and intuitive interface for all your file management needs.
           </p>
-          
-          <div className="space-y-8 mt-8">
-            <div className="flex items-start space-x-4">
-              <div className="bg-white bg-opacity-20 p-2 rounded-full">
-                <svg 
-                  xmlns="http://www.w3.org/2000/svg" 
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  strokeWidth="2" 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  className="h-6 w-6"
+          <div className="space-y-4">
+            <div className="flex items-start">
+              <div className="bg-primary/10 p-2 rounded-full mr-4">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-6 w-6 text-primary"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
                 >
-                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                  <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                  <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
                 </svg>
               </div>
               <div>
-                <h3 className="text-lg font-semibold">Secure Storage</h3>
-                <p className="text-white text-opacity-80">
-                  Your files are encrypted and securely stored in our cloud
+                <h3 className="font-medium">Secure Storage</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Your files are encrypted and stored securely in the cloud.
                 </p>
               </div>
             </div>
-            
-            <div className="flex items-start space-x-4">
-              <div className="bg-white bg-opacity-20 p-2 rounded-full">
-                <svg 
-                  xmlns="http://www.w3.org/2000/svg" 
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  strokeWidth="2" 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  className="h-6 w-6"
+            <div className="flex items-start">
+              <div className="bg-primary/10 p-2 rounded-full mr-4">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-6 w-6 text-primary"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
                 >
-                  <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path>
-                  <polyline points="16 6 12 2 8 6"></polyline>
-                  <line x1="12" y1="2" x2="12" y2="15"></line>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
                 </svg>
               </div>
               <div>
-                <h3 className="text-lg font-semibold">Easy Uploads</h3>
-                <p className="text-white text-opacity-80">
-                  Drag and drop interface makes file uploads quick and simple
+                <h3 className="font-medium">Easy Sharing</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Share files with friends, family, or colleagues with just a few clicks.
                 </p>
               </div>
             </div>
-            
-            <div className="flex items-start space-x-4">
-              <div className="bg-white bg-opacity-20 p-2 rounded-full">
-                <svg 
-                  xmlns="http://www.w3.org/2000/svg" 
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  strokeWidth="2" 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  className="h-6 w-6"
+            <div className="flex items-start">
+              <div className="bg-primary/10 p-2 rounded-full mr-4">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-6 w-6 text-primary"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
                 >
-                  <circle cx="18" cy="5" r="3"></circle>
-                  <circle cx="6" cy="12" r="3"></circle>
-                  <circle cx="18" cy="19" r="3"></circle>
-                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
-                  <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
                 </svg>
               </div>
               <div>
-                <h3 className="text-lg font-semibold">Easy Sharing</h3>
-                <p className="text-white text-opacity-80">
-                  Share files with anyone using secure, time-limited links
+                <h3 className="font-medium">Access Anywhere</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Access your files from any device, anywhere in the world.
                 </p>
               </div>
             </div>
